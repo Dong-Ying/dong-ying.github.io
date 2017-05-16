@@ -1,1 +1,570 @@
-Hello World
+<h2>Content:</h2>
+
+<ul>
+    <li>What is the problem about async implementations now?</li>
+    <li>What is async/await?</li>
+    <li>What’s behind async/await?
+
+        <ul>
+            <li>Iterator</li>
+            <li>Generator</li>
+            <li>Async process with generator</li>
+            <li>CO</li>
+            <li>Generator use case - redux-saga</li>
+        </ul>
+    </li>
+</ul>
+
+
+<h2>What is the problem?</h2>
+
+<h4>1. Callback</h4>
+
+<p>Deeply nested, callback hell:</p>
+
+<pre><code>step1(function (value1) {
+  step2(value1, function(value2) {
+    step3(value2, function(value3) {
+      step4(value3, function(value4) {
+        // Do something with value4
+      });
+    });
+  });
+});
+</code></pre>
+
+<h4>2. Promise</h4>
+
+<p>Too many promise boilerplate code(<code>then</code>, <code>catch</code>), hardly see semantically meaningful code:</p>
+
+<pre><code>Promise.resolve(step1)
+  .then(step2)
+  .then(step3)
+  .then(step4)
+  .then(function (value4) {
+    // Do something with value4
+  }, function (error) {
+    // Handle any error from step1 through step4
+  })
+</code></pre>
+
+<p>So async/await came to rescue.</p>
+
+<h2>What is async/await?</h2>
+
+<h3>1. Overview</h3>
+
+<p>The async function declaration defines an asynchronous function.</p>
+
+<p>When an <code>async</code> function is called, <strong>it returns a Promise</strong>. When the async function returns a value, the Promise will be resolved with the returned value.  When the async function throws an exception or some value, the Promise will be rejected with the thrown value.</p>
+
+<p>The <code>await</code> expression causes async function execution to pause, to wait for the Promise's resolution, and to resume the async function execution when the value is resolved. It then returns the resolved value. If the value is not a Promise, it's converted to a resolved Promise. If the Promise is rejected, the await expression throws the rejected value.</p>
+
+<pre><code>async function getStockPriceByName(name) {
+  var symbol = await getStockSymbol(name);
+  var stockPrice = await getStockPrice(symbol);
+  return stockPrice;
+}
+
+getStockPriceByName('goog').then(function (result) {
+  console.log(result);
+});
+</code></pre>
+
+<pre><code>async function f2() {
+  var y = await 20;
+  console.log(y); // 20
+}
+f2();
+</code></pre>
+
+<pre><code>async function f3() {
+  try {
+    var z = await Promise.reject(30);
+  } catch(e) {
+    console.log(e); // 30
+  }
+}
+f3();
+</code></pre>
+
+<pre><code>async function f4() {
+  throw new Error('Error happened');
+}
+
+f().then(
+  v =&gt; console.log(v),
+  e =&gt; console.log(e)
+)
+// Error: Error happened
+</code></pre>
+
+<p>Trigger async operations concurrently:</p>
+
+<pre><code>let [foo, bar] = await Promise.all([getFoo(), getBar()]);
+</code></pre>
+
+<p>or</p>
+
+<pre><code>let fooPromise = getFoo();
+let barPromise = getBar();
+let foo = await fooPromise;
+let bar = await barPromise;
+</code></pre>
+
+<h3>2. Rewrite the previous example with async/await</h3>
+
+<pre><code>async function longRunningTask(value1) {
+  try {
+    var value2 = await step1(value1);
+    var value3 = await step2(value2);
+    var value4 = await step3(value3);
+    var value5 = await step4(value4);
+    // Do something with value4
+  } catch (e) {
+    // Handle any error from step1 through step4
+  }
+}
+</code></pre>
+
+<p>Pretty much like sync code, the only difference with sync code is the keyword <code>async</code> and <code>await</code>.</p>
+
+<h2>What’s behind async/await?</h2>
+
+<h3>1. Iterator</h3>
+
+<h4>1.1 Why Iterator?</h4>
+
+<p>The idea of iterability is as follows.</p>
+
+<p><strong>Data consumers</strong>: JavaScript has language constructs that consume data. For example, for-of loops over values and the spread operator (...) inserts values into Arrays or function calls.</p>
+
+<p><strong>Data sources</strong>: The data consumers could get their values from a variety of sources. For example, you may want to iterate over the elements of an Array, the key-value entries in a Map or the characters of a string.</p>
+
+<p>It’s not practical for every consumer to support all sources, especially because it should be possible to create new sources (e.g. via libraries).</p>
+
+<h4>1.2 What is Iterable and Iterator?</h4>
+
+<p>ES6 introduces the interface Iterable. Data consumers use it, data sources implement it:</p>
+
+<p>An <strong>iterable</strong> is a data structure that implementing a method whose key is Symbol.iterator. That method is a factory for iterators.</p>
+
+<p>An <strong>iterator</strong> is a pointer for traversing the elements of a data structure.</p>
+
+<p>Expressed as interfaces in TypeScript notation, these roles look like this:</p>
+
+<pre><code>interface Iterable {
+    [Symbol.iterator]() : Iterator;
+}
+interface Iterator {
+    next() : IteratorResult;
+}
+interface IteratorResult {
+    value: any;
+    done: boolean;
+}
+</code></pre>
+
+<p><strong>Example: </strong></p>
+
+<pre><code>&gt; const arr = ['a', 'b', 'c'];
+&gt; const iter = arr[Symbol.iterator]();
+&gt; iter.next()
+{ value: 'a', done: false }
+&gt; iter.next()
+{ value: 'b', done: false }
+&gt; iter.next()
+{ value: 'c', done: false }
+&gt; iter.next()
+{ value: undefined, done: true }
+</code></pre>
+
+<h4>1.3 What is iterable?</h4>
+
+<p>The following values are iterable:</p>
+
+<ul>
+    <li>Arrays</li>
+    <li>Strings</li>
+    <li>Maps</li>
+    <li>Sets</li>
+</ul>
+
+
+<h4>1.4 Constructs supporting iteration</h4>
+
+<p>Language constructs that access data via iteration:</p>
+
+<ul>
+    <li><p>Destructuring via an Array pattern:</p>
+
+<pre><code>  const [a,b] = new Set(['a', 'b', 'c']);
+</code></pre></li>
+    <li><p>for-of loop:</p>
+
+<pre><code>    for (const x of ['a', 'b', 'c']) {
+        console.log(x);
+    }
+</code></pre></li>
+    <li><p>Array.from():</p>
+
+<pre><code>const arr = Array.from(new Set(['a', 'b', 'c']));
+</code></pre></li>
+    <li><p>Spread operator (...):</p>
+
+<pre><code>const arr = [...new Set(['a', 'b', 'c'])];
+</code></pre></li>
+    <li><p>Constructors of Maps and Sets:</p>
+
+<pre><code>const map = new Map([[false, 'no'], [true, 'yes']]);
+const set = new Set(['a', 'b', 'c']);
+</code></pre></li>
+    <li><p>Promise.all(), Promise.race():</p>
+
+<pre><code>Promise.all(iterableOverPromises).then(···);
+Promise.race(iterableOverPromises).then(···);
+</code></pre></li>
+    <li><p>yield*:</p>
+
+<pre><code>yield* anIterable;
+</code></pre></li>
+</ul>
+
+
+<h4>1.5 Custom Iterable Example</h4>
+
+<pre><code>const iterable = {
+    [Symbol.iterator]() {
+        let step = 0;
+        const iterator = {
+            next() {
+                if (step &lt;= 2) {
+                    step++;
+                }
+                switch (step) {
+                    case 1:
+                        return { value: 'hello', done: false };
+                    case 2:
+                        return { value: 'world', done: false };
+                    default:
+                        return { value: undefined, done: true };
+                }
+            }
+        };
+        return iterator;
+    }
+};
+</code></pre>
+
+<pre><code>for (const x of iterable) {
+    console.log(x);
+}
+// Output:
+// hello
+// world
+</code></pre>
+
+<h4>1.6 Optional iterator methods: return() and throw()</h4>
+
+<p>Two iterator methods are optional:</p>
+
+<p><code>return()</code> gives an iterator the opportunity to clean up if an iteration ends prematurely.</p>
+
+<p><code>throw()</code> is about forwarding a method call to a generator that is iterated over via yield*.</p>
+
+<h3>2. Generator</h3>
+
+<h4>2.1 What is Generator?</h4>
+
+<p>A generator is a special type of function that works as <strong>a factory for iterators</strong>. A function becomes a generator if it contains one or more <code>yield</code> expressions and if it uses the <code>function*</code> syntax.</p>
+
+<p>It can be paused and resumed, calling genFunc does not execute its body. Instead, you get a so-called generator object, with which you can control the execution of the body, The method call genObj.next() continues execution until the next yield::</p>
+
+<pre><code>function* helloWorldGenerator() {
+  yield 'hello';
+  yield 'world';
+  return 'ending';
+}
+
+var hw = helloWorldGenerator();
+
+hw.next()
+// { value: 'hello', done: false }
+
+hw.next()
+// { value: 'world', done: false }
+
+hw.next()
+// { value: 'ending', done: true }
+
+hw.next()
+// { value: undefined, done: true }
+</code></pre>
+
+<h4>2.2 Relationship with Iterator</h4>
+
+<p>Calling a generator function will return an iterator(it's actually an instance of the generator function), so assigning a generator function to an object's <code>Symbol.iterator</code> will enable this object to be iterable.</p>
+
+<pre><code>var myIterable = {};
+myIterable[Symbol.iterator] = function* () {
+  yield 1;
+  yield 2;
+  yield 3;
+};
+
+[...myIterable] // [1, 2, 3]
+</code></pre>
+
+<p>The iterator returned is also an iterable, it has the <code>Symbol.iterator</code> property, and executing this will return the iterator itself.</p>
+
+<pre><code>function* gen(){
+  yield 1;
+  yield 2;
+  yield 3;
+}
+
+var g = gen();
+
+g[Symbol.iterator]() === g // true
+
+[...g] // [1, 2, 3]
+</code></pre>
+
+<h4>2.3 Sending values via next()</h4>
+
+<p>The next() method also accepts a value which can be used to modify the internal state of the generator. A yield expression always return undefined, but a value passed to next() will be treated as the result of the last yield expression that paused the generator.</p>
+
+<pre><code>function* dataConsumer() {
+    console.log('Started');
+    console.log(`1. ${yield}`); // (A)
+    console.log(`2. ${yield}`);
+    return 'result';
+}
+
+const genObj = dataConsumer();
+
+genObj.next()
+// Started
+// { value: undefined, done: false }
+
+genObj.next('a')
+// 1. a
+// { value: undefined, done: false }
+
+genObj.next('b')
+// 2. b
+// { value: 'result', done: true }
+</code></pre>
+
+<h4>2.4 Throw an exception via throw()</h4>
+
+<p>throw() throws an exception at the location of the yield that led to the last suspension of the generator, and it can be caught inside the generator.</p>
+
+<pre><code>function* genFunc1() {
+    try {
+        console.log('Started');
+        yield; // (A)
+    } catch (error) {
+        console.log('Caught: ' + error);
+    }
+}
+
+const genObj1 = genFunc1();
+
+genObj1.next()
+\\ Started
+\\ { value: undefined, done: false }
+
+genObj1.throw(new Error('Problem!'))
+\\ Caught: Error: Problem!
+\\ { value: undefined, done: true }
+</code></pre>
+
+<h4>2.5 Generator.prototype.return()</h4>
+
+<p>return() will terminate the generator with the value passed in.</p>
+
+<pre><code>function* gen() {
+  yield 1;
+  yield 2;
+  yield 3;
+}
+
+var g = gen();
+
+g.next()        // { value: 1, done: false }
+g.return('foo') // { value: "foo", done: true }
+g.next()        // { value: undefined, done: true }
+</code></pre>
+
+<h4>2.6 Recursion via yield*</h4>
+
+<pre><code>function* bar() {
+    yield 'x';
+    yield* foo();
+    yield 'y';
+}
+
+function* bar() {
+    yield 'x';
+    for (const value of foo()) {
+        yield value;
+    }
+    yield 'y';
+}
+</code></pre>
+
+<p>The operand of yield* does not have to be a generator object, it can be any iterable:</p>
+
+<h3>3. Async process with generator</h3>
+
+<p>The fact that generators-as-observers pause while they wait for input makes them perfect for on-demand processing of data that is received asynchronously.</p>
+
+<pre><code>var fetch = require('node-fetch');
+
+function* gen(){
+  var url = 'https://api.github.com/users/github';
+  var result = yield fetch(url);
+  console.log(result.bio);
+}
+
+var g = gen();
+var result = g.next();
+
+result.value.then(function(data){
+  return data.json();
+}).then(function(data){
+  g.next(data);
+});
+</code></pre>
+
+<pre><code>var fs = require('fs');
+
+var readFile = function (fileName){
+  return new Promise(function (resolve, reject){
+    fs.readFile(fileName, function(error, data){
+      if (error) return reject(error);
+      resolve(data);
+    });
+  });
+};
+
+var gen = function* (){
+  var f1 = yield readFile('/etc/fstab');
+  var f2 = yield readFile('/etc/shells');
+  console.log(f1.toString());
+  console.log(f2.toString());
+};
+
+var g = gen();
+
+g.next().value.then(function(data){
+  g.next(data).value.then(function(data){
+    g.next(data);
+  });
+});
+</code></pre>
+
+<p>Executing is just adding callbacks one by one, so we can have a executor like this:</p>
+
+<pre><code>function run(gen){
+  var g = gen();
+
+  function next(data){
+    var result = g.next(data);
+    if (result.done) return result.value;
+    result.value.then(function(data){
+      next(data);
+    });
+  }
+
+  next();
+}
+
+run(gen);
+</code></pre>
+
+<h3>4. CO</h3>
+
+<p>Generator based control flow goodness for nodejs and the browser, using promises, letting you write non-blocking code in a nice-ish way.</p>
+
+<p>It takes a generator function and returns a promise</p>
+
+<pre><code>co(function* () {
+  var result = yield Promise.resolve(true);
+  return result;
+}).then(function (value) {
+  console.log(value);
+}, function (err) {
+  console.error(err.stack);
+});
+</code></pre>
+
+<h3>5. Async and await is the syntax sugar of generator function</h3>
+
+<p>Rewrite the previous example using async/await:</p>
+
+<pre><code>var asyncReadFile = async function () {
+  var f1 = await readFile('/etc/fstab');
+  var f2 = await readFile('/etc/shells');
+  console.log(f1.toString());
+  console.log(f2.toString());
+};
+</code></pre>
+
+<p>It's just replacing <code>*</code> with <code>async</code> and <code>yield</code> with <code>await</code>, and has the executor embeded.</p>
+
+<h3>6. Generator use case: redux-saga</h3>
+
+<p>redux-saga uses <strong>Generators</strong> to make those asynchronous flows easy to read, write and test</p>
+
+<pre><code>// main.js
+import { createStore, applyMiddleware } from 'redux'
+import createSagaMiddleware from 'redux-saga'
+
+import reducer from './reducers'
+import mySaga from './sagas'
+
+// create the saga middleware
+const sagaMiddleware = createSagaMiddleware()
+// mount it on the Store
+const store = createStore(
+  reducer,
+  applyMiddleware(sagaMiddleware)
+)
+
+// then run the saga
+sagaMiddleware.run(mySaga)
+
+// render the application
+</code></pre>
+
+<pre><code>//Component.js
+ onSomeButtonClicked() {
+    const { userId, dispatch } = this.props
+    dispatch({type: 'USER_FETCH_REQUESTED', payload: {userId}})
+  }
+</code></pre>
+
+<pre><code>//saga.js
+import { call, put, takeEvery, takeLatest } from 'redux-saga/effects'
+import Api from '...'
+
+// worker Saga: will be fired on USER_FETCH_REQUESTED actions
+function* fetchUser(action) {
+   try {
+      const user = yield call(Api.fetchUser, action.payload.userId);
+      yield put({type: "USER_FETCH_SUCCEEDED", user: user});
+   } catch (e) {
+      yield put({type: "USER_FETCH_FAILED", message: e.message});
+   }
+}
+
+/*
+  Starts fetchUser on each dispatched `USER_FETCH_REQUESTED` action.
+  Allows concurrent fetches of user.
+*/
+function* mySaga() {
+  yield takeLatest("USER_FETCH_REQUESTED", fetchUser);
+}
+</code></pre>
